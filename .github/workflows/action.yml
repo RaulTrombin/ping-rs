@@ -13,6 +13,8 @@ jobs:
         override: true
     - name: Check Type
       run: cargo fmt -- --check
+    - name: Check Clippy
+      run: cargo clippy -- -Dwarnings
     - name: Run internal tests
       run: cargo test --verbose -- --nocapture
     - name: Build
