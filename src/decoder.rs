@@ -29,6 +29,12 @@ pub struct Decoder {
     message: ProtocolMessage,
 }
 
+impl Default for Decoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Decoder {
     pub fn new() -> Self {
         Self {
@@ -45,7 +51,7 @@ impl Decoder {
                     self.state = DecoderState::AwaitingStart2;
                     return DecoderResult::InProgress;
                 }
-                return DecoderResult::Error(ParseError::InvalidStartByte);
+                DecoderResult::Error(ParseError::InvalidStartByte)
             }
             DecoderState::AwaitingStart2 => {
                 if byte == HEADER[1] {
@@ -54,7 +60,7 @@ impl Decoder {
                     return DecoderResult::InProgress;
                 }
                 self.state = DecoderState::AwaitingStart1;
-                return DecoderResult::Error(ParseError::InvalidStartByte);
+                DecoderResult::Error(ParseError::InvalidStartByte)
             }
             DecoderState::ReadingHeader => {
                 self.buffer.push(byte);
@@ -68,7 +74,7 @@ impl Decoder {
                     self.state = DecoderState::ReadingPayload;
                     self.buffer.clear();
                 }
-                return DecoderResult::InProgress;
+                DecoderResult::InProgress
             }
             DecoderState::ReadingPayload => {
                 self.buffer.push(byte);
@@ -78,7 +84,7 @@ impl Decoder {
                     self.state = DecoderState::ReadingChecksum;
                     self.buffer.clear();
                 }
-                return DecoderResult::InProgress;
+                DecoderResult::InProgress
             }
             DecoderState::ReadingChecksum => {
                 self.buffer.push(byte);
@@ -89,7 +95,7 @@ impl Decoder {
                     self.reset();
                     return DecoderResult::Success(message);
                 }
-                return DecoderResult::InProgress;
+                DecoderResult::InProgress
             }
         }
     }

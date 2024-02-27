@@ -12,5 +12,5 @@ pub mod message;
 pub fn calculate_crc(pack_without_payload: &[u8]) -> u16 {
     return pack_without_payload
         .iter()
-        .fold(0 as u16, |s, &v| s.wrapping_add(v as u16));
+        .fold(0_u16, |s, &v| s.wrapping_add(v as u16));
 }

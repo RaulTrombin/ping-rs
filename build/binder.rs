@@ -2,8 +2,6 @@ use convert_case::{Case, Casing};
 use proc_macro2::TokenStream;
 use std::io::Write;
 
-use quote;
-
 pub fn generate<W: Write>(modules: Vec<String>, out: &mut W) {
     dbg!(&modules);
     let modules_tokens = modules

@@ -3,7 +3,6 @@ use std::io::{Read, Write};
 
 use convert_case::{Case, Casing};
 use proc_macro2::TokenStream;
-use quote;
 
 macro_rules! ident {
     ($a:expr) => {{
@@ -18,6 +17,7 @@ struct VectorType {
 }
 
 #[derive(Debug)]
+#[allow(clippy::upper_case_acronyms)]
 enum PayloadType {
     CHAR,
     U8,
@@ -53,14 +53,13 @@ impl PayloadType {
                 data_type: PayloadType::from_string(
                     value.pointer("/vector/datatype").unwrap().as_str().unwrap(),
                 ),
-                size_type: match value.pointer("/vector/sizetype") {
-                    Some(value) => Some(PayloadType::from_string(value.as_str().unwrap())),
-                    None => None,
-                },
+                size_type: value
+                    .pointer("/vector/sizetype")
+                    .map(|value| PayloadType::from_string(value.as_str().unwrap())),
             }));
         }
 
-        return PayloadType::from_string(&typ);
+        PayloadType::from_string(typ)
     }
 
     pub fn to_rust(&self) -> TokenStream {
@@ -88,6 +87,7 @@ impl PayloadType {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 struct Payload {
     name: String,
     description: Option<String>,
@@ -97,10 +97,7 @@ struct Payload {
 
 impl Payload {
     pub fn from_json(value: &serde_json::Value) -> Self {
-        let unwrap_string = |name| match value.get(name) {
-            Some(unit) => Some(unit.as_str().unwrap().into()),
-            None => None,
-        };
+        let unwrap_string = |name| value.get(name).map(|unit| unit.as_str().unwrap().into());
 
         Payload {
             name: value.get("name").unwrap().as_str().unwrap().into(),
@@ -145,9 +142,9 @@ struct MessageDefinition {
 }
 
 impl MessageDefinition {
-    pub fn from_json(name: &String, value: &serde_json::Value) -> Self {
+    pub fn from_json(name: &str, value: &serde_json::Value) -> Self {
         MessageDefinition {
-            name: name.clone(),
+            name: name.to_owned(),
             id: value.get("id").unwrap().as_u64().unwrap() as u16,
             description: value.get("description").unwrap().as_str().unwrap().into(),
             payload: value
@@ -156,7 +153,7 @@ impl MessageDefinition {
                 .as_array()
                 .unwrap()
                 .iter()
-                .map(|element| Payload::from_json(element))
+                .map(Payload::from_json)
                 .collect(),
         }
     }
@@ -188,7 +185,7 @@ impl MessageDefinition {
             let name = quote::format_ident!("{}", pay.name);
 
             if let PayloadType::VECTOR(vector) = &pay.typ {
-                if let Some(_) = &vector.size_type {
+                if vector.size_type.is_some() {
                     let length_name = quote::format_ident!("{}_length", name);
 
                     variables_serialized.push(quote! {
@@ -329,8 +326,8 @@ pub fn emit_protocol_wrapper() -> TokenStream {
 
 fn emit_ping_message(messages: HashMap<&String, &MessageDefinition>) -> TokenStream {
     let message_enums_name = messages
-        .iter()
-        .map(|(name, _message)| {
+        .keys()
+        .map(|name| {
             let pascal_message_name = ident!(name.to_case(Case::Pascal));
             quote!(Messages::#pascal_message_name(..) => #name,)
         })
@@ -356,8 +353,8 @@ fn emit_ping_message(messages: HashMap<&String, &MessageDefinition>) -> TokenStr
         .collect::<Vec<TokenStream>>();
 
     let message_enums_serialize = messages
-        .iter()
-        .map(|(name, _message)| {
+        .keys()
+        .map(|name| {
             let pascal_message_name = ident!(name.to_case(Case::Pascal));
             quote!(Messages::#pascal_message_name(content) => content.serialize(),)
         })
@@ -423,14 +420,13 @@ fn emit_ping_message(messages: HashMap<&String, &MessageDefinition>) -> TokenStr
 pub fn generate<R: Read, W: Write>(input: &mut R, output_rust: &mut W) {
     let messages = parse_description(input);
     let messages = messages
-        .iter()
-        .map(|(_message_type, messages)| messages)
+        .values()
         .flatten()
         .collect::<HashMap<&String, &MessageDefinition>>();
 
     let message_enums = messages
-        .iter()
-        .map(|(name, _message)| {
+        .keys()
+        .map(|name| {
             let pascal_message_name = ident!(name.to_case(Case::Pascal));
             let pascal_struct_name = quote::format_ident!("{}Struct", pascal_message_name);
             quote!(#pascal_message_name(#pascal_struct_name),)
@@ -445,8 +441,8 @@ pub fn generate<R: Read, W: Write>(input: &mut R, output_rust: &mut W) {
     };
 
     let message_tokens = messages
-        .iter()
-        .map(|(_name, message)| message.emit_struct())
+        .values()
+        .map(|message| message.emit_struct())
         .collect::<Vec<TokenStream>>();
 
     let protocol_wrapper = emit_protocol_wrapper();
@@ -508,5 +504,5 @@ fn parse_description(
             })
             .collect();
 
-    return message_categories;
+    message_categories
 }

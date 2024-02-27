@@ -1,6 +1,6 @@
 use std::io::Write;
 
-pub const HEADER: [u8; 2] = ['B' as u8, 'R' as u8];
+pub const HEADER: [u8; 2] = [b'B', b'R'];
 
 #[derive(Clone, Debug, Default)]
 pub struct ProtocolMessage {

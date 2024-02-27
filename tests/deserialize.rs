@@ -26,7 +26,7 @@ fn test_simple_deserialization() {
     for byte in &buffer[0..buffer.len() - 2] {
         dbg!(byte, &decoder.state);
         assert!(matches!(
-            decoder.parse_byte(byte.clone()),
+            decoder.parse_byte(*byte),
             DecoderResult::InProgress
         ));
     }
