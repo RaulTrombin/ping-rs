@@ -72,7 +72,6 @@ impl Decoder {
             }
             DecoderState::ReadingPayload => {
                 self.buffer.push(byte);
-                dbg!(self.buffer.len(), self.message.payload_length);
                 if self.buffer.len() == self.message.payload_length as usize {
                     self.message.payload = self.buffer.clone();
                     self.state = DecoderState::ReadingChecksum;
