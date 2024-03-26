@@ -1,0 +1,1 @@
+window.ALL_CRATES = ["bytes","ping_rs"];
