@@ -2,12 +2,20 @@
 
 use bytes::BytesMut;
 use futures::stream::StreamExt;
-use std::{env, io};
+use futures::AsyncWrite;
+use std::{env, io::{self, IoSlice}, time::Duration};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, task};
 use tokio_util::codec::{Decoder, Encoder};
 
-use ping_rs::{common, decoder::Decoder as PingDecoder, message::ProtocolMessage, Messages};
+use ping_rs::{
+    common,
+    decoder::Decoder as PingDecoder,
+    message::{self, ProtocolMessage},
+    ping1d, Messages,
+};
 use std::convert::TryFrom;
 use tokio_serial::SerialPortBuilderExt;
+use tokio_util::codec::{FramedRead, FramedWrite, LinesCodec, LinesCodecError};
 
 #[cfg(unix)]
 const DEFAULT_TTY: &str = "/dev/ttyUSB0";
@@ -25,19 +33,27 @@ impl Decoder for PingCodec {
 
         for byte in src.iter() {
             match decoder.parse_byte(*byte) {
-                ping_rs::decoder::DecoderResult::InProgress => { return Ok(None) }
+                ping_rs::decoder::DecoderResult::InProgress => {}
                 ping_rs::decoder::DecoderResult::Success((msg)) => {
-                    println!("sucess");
+                    println!("sucess {:?}", msg);
                     match Messages::try_from(&msg) {
                         Ok(Messages::Common(msg)) => return Ok(Some(Messages::Common((msg)))),
-                        Ok(Messages::Ping1D(msg)) => return Ok(Some(Messages::Ping1D((msg)))),
-                        _ => {},
+                        Ok(Messages::Ping1D(msg)) => {
+                            println!("{:?}", msg);
+                            return Ok(Some(Messages::Ping1D((msg))));
+                        }
+                        Ok(Messages::Bluebps(msg)) => {}
+                        Ok(Messages::Ping360(msg)) => {}
+                        Err(e) => {
+                            println!("{:?}", e);
+                        }
                     }
                 }
-                ping_rs::decoder::DecoderResult::Error(_) => {},
+                ping_rs::decoder::DecoderResult::Error(e) => {
+                    println!("{:?}", e)
+                }
             }
         }
-
 
         Ok(None)
     }
@@ -57,50 +73,47 @@ async fn main() -> tokio_serial::Result<()> {
     let mut args = env::args();
     let tty_path = args.nth(1).unwrap_or_else(|| DEFAULT_TTY.into());
 
-    let mut port = tokio_serial::new(tty_path, 9600).open_native_async()?;
+    let mut port = tokio_serial::new(tty_path, 115200).open_native_async()?;
 
     #[cfg(unix)]
     port.set_exclusive(false)
         .expect("Unable to set serial port exclusive to false");
 
-    let mut reader = PingCodec.framed(port);
-
-    // // Spawn a separate task for sending messages
-    // let sender_task = task::spawn(async move {
-    //     loop {
-    //         // Send your serial message here
-    //         // For demonstration, let's send a simple message
-    //         let message = vec![0x01, 0x02, 0x03];
-    //         if let Err(err) = port.write_all(&message).await {
-    //             eprintln!("Failed to send message: {:?}", err);
-    //         }
-    //         tokio::time::sleep(Duration::from_secs(30)).await;
-    //     }
-    // });
+    let (read, write) = tokio::io::split(port);
 
 
-    while let Some(message_result) = reader.next().await {
-        let message = message_result.expect("Failed to read message");
+    let sender_task = task::spawn(async move {
+        let mut write = write; // Clone the port for the sender task
+        loop {
+            let request =
+            common::Messages::GeneralRequest(common::GeneralRequestStruct { requested_id: 5 });
+        let mut package = ProtocolMessage::new();
+        package.set_message(&request);
 
-        // Handle your message here
-        match message {
-            ping_rs::Messages::Common(common::Messages::GeneralRequest(general_request)) => {
-                // Handle general request message
-                println!("General request message: {:?}", general_request);
-            }
-            ping_rs::Messages::Ping1D(something) => {
-                // Handle general request message
-                println!("General request message: {:?}", something);
-            }
-            ping_rs::Messages::Common(common::Messages::Nack(nack)) => {
-                // Handle nack message
-                println!("Nack message: {:?}", nack);
-            }
-            _ => {
-                // Handle other message types
-            }
+        if let Err(e) = write.write(&mut &package.clone().serialized()).await {
+            eprintln!("Error writing to port: {:?}", e);
+            break; // Exit the loop if write operation fails
         }
-    }
 
+            println!("sleep");
+            // Sleep for 1 minute
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
+    });
+
+    let framed_stdin = FramedRead::new(read, PingCodec{});
+
+
+    let receiver_task = framed_stdin
+    .for_each(|msg| async {
+        match msg {
+            Ok(message) => println!("Received: "),
+            Err(err) => eprintln!("Error decoding message: {:?}", err),
+        }
+    });
+
+    // Wait for the sender task to finish
+    // sender_task.await;
+    tokio::join!(sender_task, receiver_task);
     Ok(())
 }
