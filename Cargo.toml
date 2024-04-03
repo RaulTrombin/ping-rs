@@ -65,3 +65,8 @@ version = "0.10.0"
 name = "ping_async"
 path = "examples/ping_async.rs"
 required-features = ["rt", "codec"]
+
+[[example]]
+name = "async_2"
+path = "examples/async_2.rs"
+required-features = ["rt", "codec"]
