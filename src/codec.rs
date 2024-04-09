@@ -49,10 +49,50 @@ impl Decoder for PingCodec {
 }
 
 impl Encoder<ProtocolMessage> for PingCodec {
-    type Error = io::Error;
+    type Error = PingError;
 
     fn encode(&mut self, item: ProtocolMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
         dst.extend_from_slice(&item.serialized());
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common;
+
+    #[test]
+    fn test_ping_codec() {
+        let mut codec = PingCodec::new();
+
+        // Define GeneralRequest Buffer
+        let buffer: Vec<u8> = vec![
+            0x42, 0x52, 0x02, 0x00, // payload length
+            0x06, 0x00, // message id
+            0x00, 0x00, // src and dst id
+            0x05, 0x00, // payload
+            0xa1, 0x00, // crc
+        ];
+        let mut bytes_mut = BytesMut::new();
+        bytes_mut.extend_from_slice(&buffer);
+
+        // Define equivalent ProtocolMessage
+        let request =
+            common::Messages::GeneralRequest(common::GeneralRequestStruct { requested_id: 5 });
+        let mut package = crate::message::ProtocolMessage::new();
+        package.set_message(&request);
+
+        // Decode the buffer
+        let decoded_message = codec.decode(&mut bytes_mut).unwrap().unwrap();
+
+        // Assert that the decoded message matches the expected PingMessage
+        assert_eq!(decoded_message, package);
+
+        let mut encoded = BytesMut::new();
+        codec.encode(package.clone(), &mut encoded).unwrap();
+
+        // Assert that the encoded bytes match the original buffer
+        assert_eq!(encoded.to_vec(), buffer);
     }
 }
