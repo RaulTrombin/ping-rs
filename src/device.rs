@@ -1,15 +1,25 @@
 use std::convert::TryFrom;
 
-use futures::{stream::{SplitSink, SplitStream}, SinkExt, StreamExt};
+use futures::{
+    stream::{SplitSink, SplitStream},
+    SinkExt, StreamExt,
+};
+use tokio::sync::broadcast;
 use tokio_serial::{SerialPortBuilderExt, SerialStream};
 use tokio_util::codec::{Decoder, Framed};
 
-use crate::{codec::PingCodec, common::{self, ProtocolVersionStruct}, error::PingError, message::{self, ProtocolMessage}, Messages};
+use crate::{
+    codec::PingCodec,
+    common::{self, ProtocolVersionStruct},
+    error::PingError,
+    message::{self, ProtocolMessage},
+    Messages,
+};
 
 pub struct Common {
     pub id: u8,
     tx: SplitSink<Framed<SerialStream, PingCodec>, ProtocolMessage>,
-    rx: SplitStream<Framed<SerialStream, PingCodec>>,
+    rx: broadcast::Receiver<ProtocolMessage>,
 }
 
 impl Common {
@@ -19,9 +29,27 @@ impl Common {
         port.set_exclusive(false)?;
 
         let stream: Framed<tokio_serial::SerialStream, PingCodec> = PingCodec::new().framed(port);
-        let (tx, rx) = stream.split();
+        let (serial_tx, serial_rx) = stream.split();
 
-        Ok(Common { id:0, tx, rx })
+        let (tx, mut rx) = broadcast::channel::<ProtocolMessage>(16);
+
+        tokio::spawn(async move {
+            let mut stream = serial_rx;
+
+            loop {
+                while let Some(msg) = stream.next().await {
+                    if let Ok(msg) = msg {
+                        let _ = tx.send(msg);
+                    }
+                }
+            }
+        });
+
+        Ok(Common {
+            id: 0,
+            tx: serial_tx,
+            rx: rx,
+        })
     }
 
     pub async fn send_message(&mut self, message: ProtocolMessage) -> Result<(), PingError> {
@@ -29,11 +57,12 @@ impl Common {
     }
 
     pub async fn receive_message(&mut self) -> Result<ProtocolMessage, PingError> {
-        if let Some(protocol_message) = self.rx.next().await {
-            Ok(protocol_message?)
-        } else {
-            Err(PingError::Io(std::io::Error::new(std::io::ErrorKind::Other, "No message received")))
-        }
+        self.rx.recv().await.map_err(|_| {
+            PingError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Broadcast channel closed",
+            ))
+        })
     }
 }
 
@@ -51,19 +80,27 @@ pub trait PingDevice {
         self.get_mut_common().id = id;
     }
 
-    async fn get_firmware(&mut self) -> Result<ProtocolVersionStruct,PingError> {
+    async fn get_firmware(&mut self) -> Result<ProtocolVersionStruct, PingError> {
         let request =
-        common::Messages::GeneralRequest(common::GeneralRequestStruct { requested_id: 5 });
+            common::Messages::GeneralRequest(common::GeneralRequestStruct { requested_id: 5 });
         let mut package = message::ProtocolMessage::new();
         package.set_message(&request);
         self.get_mut_common().send_message(package).await;
 
-        let answer = self.get_mut_common().receive_message().await.unwrap();
+        loop {
+            let answer = match self.get_mut_common().receive_message().await {
+                Ok(answer) => answer,
+                Err(_) => continue,
+            };
 
-        match Messages::try_from(&answer) {
-            Ok(Messages::Common(common::Messages::ProtocolVersion(answer))) => {Ok(answer)},
-            e => {Err(PingError::Io(std::io::Error::new(std::io::ErrorKind::Other, "Unexpected structure")))}}
+            match Messages::try_from(&answer) {
+                Ok(Messages::Common(common::Messages::ProtocolVersion(answer))) => {
+                    return Ok(answer)
+                }
+                e => {}
+            }
         }
+    }
 }
 
 pub struct Ping360 {
@@ -86,7 +123,7 @@ impl Ping360 {
     }
 }
 
-impl PingDevice for Ping360  {
+impl PingDevice for Ping360 {
     fn get_common(&self) -> &Common {
         &self.common
     }

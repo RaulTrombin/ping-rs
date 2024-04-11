@@ -8,9 +8,9 @@ use std::convert::TryFrom;
 
 pub mod codec;
 pub mod decoder;
+pub mod device;
 pub mod error;
 pub mod message;
-pub mod device;
 
 pub fn calculate_crc(pack_without_payload: &[u8]) -> u16 {
     return pack_without_payload
