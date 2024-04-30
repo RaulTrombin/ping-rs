@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Messages","PingError"],"fn":["calculate_crc"],"mod":["bluebps","common","decoder","message","ping1d","ping360"],"struct":["PingDevice"]};
