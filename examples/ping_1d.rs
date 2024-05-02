@@ -56,7 +56,7 @@ async fn main() -> Result<(), PingError> {
     for n in (1..10).rev() {
         println!("Testing set/get device id: {n}");
         ping1d.set_device_id(n).await?;
-        assert_eq!(n, ping1d.get_device_id().await.unwrap().device_id);
+        assert_eq!(n, ping1d.device_id().await.unwrap().device_id);
     }
 
     // Testing set command, all set commands check for their Ack message, Error and NAck error are possible
@@ -64,12 +64,35 @@ async fn main() -> Result<(), PingError> {
         "Set gain to auto: {:?}",
         ping1d.set_mode_auto(1).await.is_ok()
     );
+    ping1d.set_speed_of_sound(343000).await?;
+    let mut speed_of_sound_struct = ping1d.speed_of_sound().await?;
+    println!(
+        "Test set & get with a new speed of sound: {:?} m/s",
+        speed_of_sound_struct.speed_of_sound as f64 / 1000.0
+    );
+    ping1d.set_speed_of_sound(1500000).await?;
+    speed_of_sound_struct = ping1d.speed_of_sound().await?;
+    println!(
+        "Test set & get with default speed of sound: {:?} m/s",
+        speed_of_sound_struct.speed_of_sound as f64 / 1000.0
+    );
 
     // Creating two futures to read Protocol Version and Device ID
     let res1 = async { ping1d.get_protocol_version().await };
-    let res2 = async { ping1d.get_device_id().await };
-    let (protocol_version_struct, device_id_struct) =
-        tokio::try_join!(res1, res2).expect("Failed to join results");
+    let res2 = async { ping1d.device_id().await };
+    let res3 = async { ping1d.gain_setting().await };
+    let res4 = async { ping1d.processor_temperature().await };
+    let res5 = async { ping1d.voltage_5().await };
+    let res6 = async { ping1d.speed_of_sound().await };
+
+    let (
+        protocol_version_struct,
+        device_id_struct,
+        gain_setting_struct,
+        processor_temperature_struct,
+        voltage5_struct,
+        speed_of_sound_struct,
+    ) = tokio::try_join!(res1, res2, res3, res4, res5, res6).expect("Failed to join results");
 
     let version = format!(
         "{}.{}.{}",
@@ -80,6 +103,19 @@ async fn main() -> Result<(), PingError> {
 
     println!("Protocol version is: {version}");
     println!("Device id is: {:?}", device_id_struct.device_id);
+    println!("Gain setting is: {:?}", gain_setting_struct.gain_setting);
+    println!(
+        "Processor temperature is: {:.2}",
+        processor_temperature_struct.processor_temperature as f64 / 100.0
+    );
+    println!(
+        "Voltage at 5V lane is: {:.3}",
+        voltage5_struct.voltage_5 as f64 / 1000.0
+    );
+    println!(
+        "Speed of sound is: {:?} m/s",
+        speed_of_sound_struct.speed_of_sound as f64 / 1000.0
+    );
 
     // Read the 30 packages we are waiting since the start of this example, all above tasks have success, we did it!
     println!("Waiting for 30 profiles...");
