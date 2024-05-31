@@ -24,9 +24,10 @@ use crate::{
 pub use crate::ping1d::Device as Ping1D;
 pub use crate::ping360::Device as Ping360;
 
+#[derive(Debug, Clone)]
 pub struct Common {
     tx: mpsc::Sender<ProtocolMessage>,
-    rx: broadcast::Receiver<ProtocolMessage>,
+    rx: broadcast::Sender<ProtocolMessage>,
 }
 
 impl Common {
@@ -40,13 +41,14 @@ impl Common {
 
         // Prepare Serial receiver broadcast and sender
         let (broadcast_tx, broadcast_rx) = broadcast::channel::<ProtocolMessage>(100);
+        let (broadcast_tx_clone) = broadcast_tx.clone();
         tokio::spawn(Self::stream(serial_stream, broadcast_tx));
         let (sender, sender_rx) = mpsc::channel::<ProtocolMessage>(100);
         tokio::spawn(Self::sink(serial_sink, sender_rx));
 
         Common {
             tx: sender,
-            rx: broadcast_rx,
+            rx: broadcast_tx_clone,
         }
     }
 
@@ -90,7 +92,7 @@ impl Common {
     }
 
     fn subscribe(&self) -> tokio::sync::broadcast::Receiver<ProtocolMessage> {
-        self.rx.resubscribe()
+        self.rx.subscribe()
     }
 }
 
