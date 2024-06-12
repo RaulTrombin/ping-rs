@@ -27,6 +27,10 @@ async fn main() -> Result<(), PingError> {
         Port::Udp(port) => Ping1D::new(port),
     };
 
+    ping1d
+    .continuous_stop(bluerobotics_ping::ping1d::ProfileStruct::id())
+    .await?;
+
     // Creating a subscription channel which will receive 30 Profile measurements, we'll check this after the next methods!
     let mut subscribed = ping1d.subscribe();
     let (tx, rx) = tokio::sync::oneshot::channel::<Vec<ProfileStruct>>();
