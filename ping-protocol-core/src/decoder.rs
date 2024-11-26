@@ -1,15 +1,48 @@
-use tracing::info;
+extern crate alloc;
+
+use alloc::vec::Vec;
+use core::fmt::{Debug, Display};
 
 use crate::message::{ProtocolMessage, HEADER};
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, PartialEq, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ParseError {
     InvalidStartByte,
     IncompleteData,
+    #[cfg_attr(feature = "serde", serde(with = "protocol_message_serialize"))]
     ChecksumError(ProtocolMessage),
+}
+
+// Add a serde serializer helper module for ProtocolMessage inside ParseError
+#[cfg(feature = "serde")]
+mod protocol_message_serialize {
+    use super::ProtocolMessage;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(message: &ProtocolMessage, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        message.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<ProtocolMessage, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        ProtocolMessage::deserialize(deserializer)
+    }
+}
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            ParseError::InvalidStartByte => write!(f, "Invalid start byte"),
+            ParseError::IncompleteData => write!(f, "Incomplete data"),
+            ParseError::ChecksumError(_) => write!(f, "Checksum error"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -32,6 +65,12 @@ pub struct Decoder {
     pub state: DecoderState,
     buffer: Vec<u8>,
     message: ProtocolMessage,
+}
+
+impl Default for Decoder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Decoder {
@@ -82,11 +121,6 @@ impl Decoder {
             }
             DecoderState::ReadingPayload => {
                 self.buffer.push(byte);
-                info!(
-                    "DecoderState : ReadingPayload {:?} {:?}",
-                    self.buffer.len(),
-                    self.message.payload_length
-                );
                 if self.buffer.len() == self.message.payload_length as usize {
                     self.message.payload = self.buffer.clone();
                     self.state = DecoderState::ReadingChecksum;
@@ -114,5 +148,54 @@ impl Decoder {
     fn reset(&mut self) {
         self.state = DecoderState::AwaitingStart1;
         self.buffer.clear();
+    }
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_simple_decoding() {
+        let mut decoder = Decoder::new();
+
+        // Test buffer from ping protocol documentation
+        let buffer: Vec<u8> = vec![
+            0x42, 0x52, 0x02, 0x00, // payload length
+            0x06, 0x00, // message id
+            0x00, 0x00, // src and dst id
+            0x05, 0x00, // payload
+            0xa1, 0x00, // crc
+        ];
+
+        for byte in &buffer[0..buffer.len() - 2] {
+            assert!(matches!(
+                decoder.parse_byte(*byte),
+                DecoderResult::InProgress
+            ));
+        }
+        assert!(matches!(
+            decoder.parse_byte(buffer[buffer.len() - 2]),
+            DecoderResult::InProgress
+        ));
+        let DecoderResult::Success(_message) = decoder.parse_byte(buffer[buffer.len() - 1]) else {
+            panic!("Failed to use decoder with valid message");
+        };
+
+        // Test with wrong CRC
+        for byte in &buffer[0..buffer.len() - 2] {
+            assert!(matches!(
+                decoder.parse_byte(*byte),
+                DecoderResult::InProgress
+            ));
+        }
+        assert!(matches!(
+            decoder.parse_byte(buffer[buffer.len() - 2]),
+            DecoderResult::InProgress
+        ));
+        assert!(matches!(
+            decoder.parse_byte(0x01), // Force CRC error
+            DecoderResult::Error(ParseError::ChecksumError(_))
+        ));
     }
 }

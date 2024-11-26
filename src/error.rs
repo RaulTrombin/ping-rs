@@ -1,4 +1,4 @@
-use crate::{decoder, message::ProtocolMessage};
+use bluerobotics_ping_core::{decoder, ProtocolMessage};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 

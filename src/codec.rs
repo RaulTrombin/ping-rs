@@ -1,6 +1,8 @@
-use crate::{decoder::Decoder as PingDecoder, error::PingError, message::ProtocolMessage};
+use bluerobotics_ping_core::{decoder::Decoder as PingDecoder, DecoderResult, ProtocolMessage};
 use bytes::{Buf, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
+
+use crate::error::PingError;
 
 pub struct PingCodec {
     decoder: PingDecoder,
@@ -28,17 +30,17 @@ impl Decoder for PingCodec {
             };
 
             match decoder.parse_byte(*byte) {
-                crate::decoder::DecoderResult::InProgress => {
+                DecoderResult::InProgress => {
                     consumed += 1;
                     if consumed == src.len() {
                         src.advance(consumed)
                     }
                 }
-                crate::decoder::DecoderResult::Success(msg) => {
+                DecoderResult::Success(msg) => {
                     src.advance(consumed + 1);
                     return Ok(Some(msg));
                 }
-                crate::decoder::DecoderResult::Error(e) => {
+                DecoderResult::Error(e) => {
                     src.advance(consumed + 1);
                     return Err(PingError::ParseError(e));
                 }
@@ -79,7 +81,7 @@ mod tests {
         // Define equivalent ProtocolMessage
         let request =
             common::Messages::GeneralRequest(common::GeneralRequestStruct { requested_id: 5 });
-        let mut package = crate::message::ProtocolMessage::new();
+        let mut package = ProtocolMessage::new();
         package.set_message(&request);
 
         // Decode the buffer

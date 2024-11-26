@@ -1,0 +1,15 @@
+[package]
+name = "bluerobotics-ping-core"
+version = "0.1.0"
+edition = "2021"
+description = "No-std implementation of the Ping Protocol decoder"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1.0.215", default-features = false, features = ["derive", "alloc"], optional = true }
+serde_bytes = { version = "0.11.15", default-features = false, optional = true }
+
+[features]
+default = []
+std = ["serde/std", "serde_bytes/std"]
+serde = ["dep:serde", "dep:serde_bytes"]

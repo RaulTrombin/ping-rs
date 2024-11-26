@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 
+use bluerobotics_ping_core::{MessageInfo, ProtocolMessage};
 use futures::{
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
@@ -15,13 +16,7 @@ use tokio::{
 use tokio_util::codec::{Decoder, Framed};
 use tracing::{error, info};
 
-use crate::{
-    codec::PingCodec,
-    common,
-    error::PingError,
-    message::{self, MessageInfo, ProtocolMessage},
-    Messages,
-};
+use crate::{codec::PingCodec, common, error::PingError, Messages};
 
 // Make devices available, each device uses Common and PingDevice.
 pub use crate::ping1d::Device as Ping1D;
@@ -126,7 +121,7 @@ pub trait PingDevice {
     async fn send_general_request(&self, requested_id: u16) -> Result<(), PingError> {
         let request =
             common::Messages::GeneralRequest(common::GeneralRequestStruct { requested_id });
-        let mut package = message::ProtocolMessage::new();
+        let mut package = ProtocolMessage::new();
         package.set_message(&request);
 
         if let Err(e) = self.get_common().send_message(package).await {
@@ -193,7 +188,8 @@ pub trait PingDevice {
                                 };
                                 return Err(PingError::NackError(answer.nack_message));
                             }
-                            _ => return Err(PingError::TryFromError(answer)), // Almost unreachable, but raises error ProtocolMessage
+                            _ => return Err(PingError::TryFromError(answer)),
+                            Err(_) => todo!(), // Almost unreachable, but raises error ProtocolMessage
                         };
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,
