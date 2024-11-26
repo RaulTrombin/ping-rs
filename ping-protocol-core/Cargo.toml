@@ -9,7 +9,21 @@ license = "MIT"
 serde = { version = "1.0.215", default-features = false, features = ["derive", "alloc"], optional = true }
 serde_bytes = { version = "0.11.15", default-features = false, optional = true }
 
+[dev-dependencies]
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+stm32f4xx-hal = { version = "0.17", features = ["stm32f401"] }
+embedded-alloc = "0.5.0"
+nb = "1.1.0"
+embedded-hal = "0.2.7"
+
 [features]
 default = []
 std = ["serde/std", "serde_bytes/std"]
 serde = ["dep:serde", "dep:serde_bytes"]
+alloc = []
+stm32 = ["alloc"]
+
+[[example]]
+name = "stm32"
+required-features = ["stm32"]

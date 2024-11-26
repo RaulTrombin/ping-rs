@@ -1,0 +1,2 @@
+[target.thumbv7em-none-eabihf]
+image = "ghcr.io/cross-rs/thumbv7em-none-eabihf:main"
